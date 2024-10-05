@@ -47,6 +47,7 @@ class MbGenre(plugins.BeetsPlugin):
                 "title_case": False,
             }
         )
+        self.import_stages = [self.genre_tag_stage]
 
     def _get_mb_release(self, album: library.Album) -> dict:
         # Work out which sections of the release to include, based on source_order queries.
@@ -68,7 +69,11 @@ class MbGenre(plugins.BeetsPlugin):
                 # Make sure we grab results
                 headers={"accept": "application/json"},
             )
-            return response.json()
+
+        js = response.json()
+        if "error" in js:
+            raise ValueError(js["error"])
+        return js
 
     def _parse_genre_list(self, l) -> list[MusicbrainzGenre]:
         genres = list()
@@ -85,24 +90,20 @@ class MbGenre(plugins.BeetsPlugin):
         genres = list()
 
         if source == GenreSource.artists:
-            genres = self._parse_genre_list(mb_response["genres"])
+            for artist_dict in mb_response["artist-credit"]:
+                genres += self._parse_genre_list(artist_dict["artist"]["genres"])
 
         elif source == GenreSource.release_group:
             genres = self._parse_genre_list(mb_response["release-group"]["genres"])
 
         elif source == GenreSource.release:
-            for artist_dict in mb_response["artist-credit"]:
-                genres += self._parse_genre_list(artist_dict["artist"]["genres"])
+            genres = self._parse_genre_list(mb_response["genres"])
 
         return genres
 
     def _get_genres(self, album: library.Album) -> str:
         if not album.mb_albumid:
-            self._log.warning(
-                "Skipping {0} - no Musicbrainz album ID is set in Beets library metadata",
-                album,
-            )
-            return ""
+            raise ValueError("No Musicbrainz album ID is set in Beets library metadata")
 
         mb_response = self._get_mb_release(album)
 
@@ -133,6 +134,21 @@ class MbGenre(plugins.BeetsPlugin):
         separator = self.config["separator"].get()
         return separator.join(genre_strs)
 
+    def _save_album_genre_data(self, album: library.Album, genres: str, write: bool):
+        if not genres:
+            self._log.warning("{0}: No genres found - no changes will be made", album)
+            return
+
+        self._log.info("{0}: {1}", album, genres)
+        album.genre = genres
+        album.store()
+
+        for item in album.items():
+            item.genre = genres
+            item.store()
+            if write:
+                item.try_write()
+
     def commands(self):
         command = ui.Subcommand(
             "mbgenre", help="Add genres to tracks from Musicbrainz tags"
@@ -146,23 +162,27 @@ class MbGenre(plugins.BeetsPlugin):
             # Is there a way we can make multiple queries at once to avoid the network latency of a one-by-one query?
             for album in lib.albums(ui.decargs(args)):
                 self._log.debug("Getting genres for {0}", album)
-                genres = self._get_genres(album)
-                if not genres:
-                    self._log.info(
-                        "{0}: No genres found - will not update anything", album
-                    )
+                try:
+                    genres = self._get_genres(album)
+                    self._save_album_genre_data(album, genres, write)
+                except ValueError as e:
+                    self._log.warning(str(e))
                     continue
-
-                self._log.info("{0}: {1}", album, genres)
-                album.genre = genres
-                album.store()
-
-                for item in album.items():
-                    item.genre = genres
-                    item.store()
-
-                    if write:
-                        item.try_write()
 
         command.func = func
         return [command]
+
+    def genre_tag_stage(self, session, task):
+        if task.is_album:
+            self._log.debug("Getting genres for {0}", task.album)
+            try:
+                genres = self._get_genres(task.album)
+                self._save_album_genre_data(task.album, genres, False)
+            except ValueError as e:
+                self._log.warning(str(e))
+                return
+
+        else:
+            self._log.warning(
+                "Not an album, cannot get release genre data from Musicbrainz"
+            )
