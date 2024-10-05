@@ -4,8 +4,6 @@ import enum
 from beets import plugins, ui, library
 import httpx
 
-print("HELLO")
-
 
 @dataclasses.dataclass
 class MusicbrainzGenre:
@@ -101,9 +99,10 @@ class MbGenre(plugins.BeetsPlugin):
     def _get_genres(self, album: library.Album) -> str:
         if not album.mb_albumid:
             self._log.warning(
-                "Skipping {0:str} - no Musicbrainz album ID has been set in Beets library metadata",
-                album.name,
+                "Skipping {0} - no Musicbrainz album ID is set in Beets library metadata",
+                album,
             )
+            return ""
 
         mb_response = self._get_mb_release(album)
 
