@@ -38,6 +38,7 @@ class MbGenre(plugins.BeetsPlugin):
         self.config.add(
             {
                 "max_genres": 5,
+                "unset_only": True,
                 "separator": ", ",
                 "source_order": [
                     GenreSource.release,
@@ -161,12 +162,15 @@ class MbGenre(plugins.BeetsPlugin):
             # TODO there's gotta be a better way of doing this that doesn't require so many API calls.
             # Is there a way we can make multiple queries at once to avoid the network latency of a one-by-one query?
             for album in lib.albums(ui.decargs(args)):
+                if self.config["unset_only"].get() and album.genre:
+                    self._log.debug(f"{0}: Skipping - genre data already set", album)
+                    continue
                 self._log.debug("Getting genres for {0}", album)
                 try:
                     genres = self._get_genres(album)
                     self._save_album_genre_data(album, genres, write)
                 except ValueError as e:
-                    self._log.warning('{0}: skipping - {1}', album, str(e))
+                    self._log.warning("{0}: skipping - {1}", album, str(e))
                     continue
 
         command.func = func
@@ -176,6 +180,12 @@ class MbGenre(plugins.BeetsPlugin):
         if task.is_album:
             self._log.debug("Getting genres for {0}", task.album)
             try:
+                if self.config["unset_only"].get() and task.album.genre:
+                    self._log.debug(
+                        f"{0}: Skipping - genre data already set", task.album
+                    )
+                    return
+
                 genres = self._get_genres(task.album)
                 self._save_album_genre_data(task.album, genres, False)
             except ValueError as e:
