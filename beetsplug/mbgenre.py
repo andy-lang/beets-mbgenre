@@ -166,7 +166,7 @@ class MbGenre(plugins.BeetsPlugin):
                     genres = self._get_genres(album)
                     self._save_album_genre_data(album, genres, write)
                 except ValueError as e:
-                    self._log.warning(str(e))
+                    self._log.warning('{0}: skipping - {1}', album, str(e))
                     continue
 
         command.func = func
