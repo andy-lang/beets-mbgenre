@@ -29,8 +29,8 @@ The plugin supports several configuration options. These should be specified in 
 mbgenre:
     # The maximum number of genre tags to be set on the album and its tracks. If not set, defaults to 1.
     max_genres: 1
-    # If an album has genre tags set already, skip them.
-    unset_only: yes
+    # If an album has genre tags set already, skip them. Defaults to False if not set.
+    overwrite: no
     # If more than one genre is retrieved, the separator between each genre. Defaults to ', ' if not set.
     separator: ", "
     # The order by which genres will be retrieved and added to the list. See "Source Order" below for a more detailed explanation.
